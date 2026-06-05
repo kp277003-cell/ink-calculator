@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1B5E20">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ink KI">
+<meta name="application-name" content="Ink KI">
+<meta name="description" content="PET & POLY Ink batch calculator with master settings">
+<link rel="manifest" href="manifest.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<title>Ink KI Calculator</title>
+<script>
+// Inline manifest for single-file PWA
+const manifestData = {
+  name: "Ink KI Calculator",
+  short_name: "Ink KI",
+  description: "PET & POLY Ink batch calculator",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#f0f4f0",
+  theme_color: "#1B5E20",
+  orientation: "portrait",
+  icons: [
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%231B5E20'/%3E%3Cpath d='M96 30 C96 30 56 78 56 106 a40 40 0 0 0 80 0 C136 78 96 30 96 30z' fill='white'/%3E%3C/svg%3E", sizes: "192x192", type: "image/svg+xml" },
+    { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%231B5E20'/%3E%3Cpath d='M256 80 C256 80 148 208 148 284 a108 108 0 0 0 216 0 C364 208 256 80 256 80z' fill='white'/%3E%3C/svg%3E", sizes: "512x512", type: "image/svg+xml" }
+  ]
+};
+const blob = new Blob([JSON.stringify(manifestData)], {type:'application/json'});
+const manifestURL = URL.createObjectURL(blob);
+document.addEventListener('DOMContentLoaded', () => {
+  const link = document.querySelector('link[rel="manifest"]');
+  if(link) link.setAttribute('href', manifestURL);
+});
+
+// Service Worker for offline support
+if('serviceWorker' in navigator){
+  const swCode = `
+    const CACHE = 'inkki-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./'])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }).catch(() => caches.match('./'))));
+    });
+  `;
+  const swBlob = new Blob([swCode], {type:'application/javascript'});
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(()=>{});
+}
+
+// Install prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  setTimeout(() => {
+    const bar = document.getElementById('installBar');
+    if(bar) bar.style.display = 'flex';
+  }, 2000);
+});
+window.addEventListener('appinstalled', () => {
+  const bar = document.getElementById('installBar');
+  if(bar) bar.style.display = 'none';
+});
+</script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f4f0;color:#1a1a1a;font-size:16px}
+  body{padding-bottom:env(safe-area-inset-bottom)}
+
+  /* ── Top bar ── */
+  .topbar{position:sticky;top:0;z-index:100;background:#1B5E20;padding:14px 16px 12px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+  .topbar-title{font-size:18px;font-weight:600;color:#fff;display:flex;align-items:center;gap:8px}
+  .topbar-title svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .topbar-btn{width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff}
+  .topbar-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .topbar-btn:active{background:rgba(255,255,255,.3)}
+
+  /* ── Page ── */
+  .page{padding:0 0 90px;min-height:calc(100vh - 56px)}
+
+  /* ── Master card ── */
+  .master-card{margin:14px 12px 0;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .mc-head{background:#E8F5E9;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;-webkit-user-select:none}
+  .mc-head:active{background:#C8E6C9}
+  .mc-head-left .ttl{font-size:14px;font-weight:600;color:#1B5E20;display:flex;align-items:center;gap:6px}
+  .mc-head-left .ttl svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mc-head-left .sub{font-size:12px;color:#388E3C;margin-top:2px}
+  .mc-chev{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#1B5E20;transition:transform .25s;flex-shrink:0}
+  .mc-chev svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mc-chev.open{transform:rotate(180deg)}
+  .mc-body{display:none}
+  .mc-body.open{display:block}
+
+  .mc-section{padding:14px 16px;border-bottom:.5px solid rgba(0,0,0,.06)}
+  .mc-section:last-of-type{border-bottom:none}
+  .mc-section+.mc-section{border-top:3px solid #1B5E20}
+  .mc-sec-hd{font-size:11px;font-weight:700;color:#2E7D32;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;display:flex;align-items:center;gap:5px}
+  .mc-sec-hd svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+  .mc-col-hd{display:flex;align-items:center;width:100%;padding:0 16px 6px;border-bottom:.5px solid rgba(0,0,0,.06);margin-bottom:0}
+  .mc-row{display:flex;align-items:center;width:100%;margin-bottom:0;padding:10px 16px;border-bottom:1px solid rgba(0,0,0,.1)}
+  .mc-row:last-of-type{border-bottom:none}
+  .mc-row:last-of-type{margin-bottom:0}
+  .mc-name{flex:1;font-size:13px;color:#1a1a1a;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mc-grade{font-size:11px;color:#bbb;width:36px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pf{width:74px;font-size:14px;padding:7px 8px;border-radius:10px;border:1.5px solid #ddd;background:#fafafa;color:#1a1a1a;text-align:right;flex-shrink:0;-webkit-appearance:none;appearance:none}
+  .pf:focus{outline:none;border-color:#1B5E20;background:#fff;box-shadow:0 0 0 3px rgba(27,94,32,.1)}
+  .pf.ch{border-color:#F9A825;background:#FFFDE7;color:#E65100}
+  .pu{font-size:12px;color:#bbb;flex-shrink:0;width:12px}
+  .mc-tot{display:flex;justify-content:flex-end;align-items:center;gap:6px;padding-top:9px;margin-top:8px;border-top:.5px solid rgba(0,0,0,.08)}
+  .mc-tot-lbl{font-size:12px;color:#999}
+  .tok{font-size:13px;font-weight:600;color:#1B5E20}
+  .tbad{font-size:13px;font-weight:600;color:#C62828}
+
+  .mc-btns{display:flex;gap:10px;padding:14px 16px;background:#F9FBF9;border-top:.5px solid rgba(0,0,0,.06)}
+  .btn-apply{flex:1;height:50px;border-radius:14px;border:none;background:#1B5E20;color:#fff;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+  .btn-apply svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+  .btn-apply:active{background:#145218;transform:scale(.98)}
+  .btn-reset{height:50px;padding:0 18px;border-radius:14px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:6px}
+  .btn-reset svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .btn-reset:active{background:#f0f0f0;transform:scale(.98)}
+
+  /* ── Sheet card ── */
+  .sheet-card{margin:12px 12px 0;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .stabs{display:flex;overflow-x:auto;border-bottom:.5px solid rgba(0,0,0,.08);-webkit-overflow-scrolling:touch}
+  .stabs::-webkit-scrollbar{display:none}
+  .stab{flex-shrink:0;padding:14px 18px;font-size:13px;font-weight:600;border:none;background:transparent;cursor:pointer;color:#999;border-bottom:3px solid transparent;transition:color .15s,border-color .15s;white-space:nowrap}
+  .stab.on{color:#1B5E20;border-bottom-color:#1B5E20}
+  .stab:active{background:rgba(0,0,0,.04)}
+
+  .sheet-body{padding:14px}
+
+  .batch-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;background:#F1F8E9;border-radius:14px;padding:13px 15px}
+  .batch-lbl{font-size:13px;color:#2E7D32;flex:1;display:flex;align-items:center;gap:6px;font-weight:600}
+  .batch-lbl svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .batch-inp{width:88px;font-size:17px;font-weight:700;padding:8px 10px;border-radius:10px;border:1.5px solid #A5D6A7;background:#fff;color:#1B5E20;text-align:right;-webkit-appearance:none;appearance:none}
+  .batch-inp:focus{outline:none;border-color:#1B5E20;box-shadow:0 0 0 3px rgba(27,94,32,.1)}
+  .batch-unit{font-size:13px;color:#388E3C;font-weight:600;white-space:nowrap}
+
+  /* ── KPI grid ── */
+  .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+  .kpi{background:#f8faf8;border-radius:12px;padding:13px}
+  .kpi-lbl{font-size:11px;color:#888;margin-bottom:3px;display:flex;align-items:center;gap:4px;font-weight:500}
+  .kpi-lbl svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .kpi-val{font-size:17px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums}
+  .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block}
+
+  /* ── Composition bar ── */
+  .cbar{height:10px;border-radius:5px;background:#E8F5E9;display:flex;overflow:hidden;margin-bottom:7px}
+  .cseg{height:100%;transition:width .35s ease}
+  .cleg{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .cli{font-size:11px;color:#555;display:flex;align-items:center;gap:3px;font-weight:500}
+
+  /* ── Material table ── */
+  .mat-list{border-radius:14px;overflow:hidden;border:.5px solid rgba(0,0,0,.08)}
+  .mat-table{width:100%;border-collapse:collapse;table-layout:fixed}
+  .th-mat{text-align:left;padding:9px 10px;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;background:#F1F8E9;width:25%}
+  .th-grade{text-align:center;padding:9px 10px;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;background:#F1F8E9;width:25%}
+  .th-pct{text-align:center;padding:9px 10px;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;background:#F1F8E9;width:25%}
+  .th-kg{text-align:right;padding:9px 10px;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;background:#F1F8E9;width:25%}
+  .td-mat{padding:11px 10px;font-size:13px;font-weight:600;color:#1a1a1a;border-top:1px solid rgba(0,0,0,.15);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:25%}
+  .td-grade{padding:11px 10px;font-size:12px;color:#999;text-align:center;border-top:1px solid rgba(0,0,0,.15);width:25%}
+  .td-pct{padding:11px 10px;font-size:12px;color:#555;text-align:center;border-top:1px solid rgba(0,0,0,.15);font-variant-numeric:tabular-nums;width:25%}
+  .td-kg{padding:11px 10px;font-size:16px;font-weight:700;color:#1B5E20;text-align:right;border-top:1px solid rgba(0,0,0,.15);font-variant-numeric:tabular-nums;width:25%}
+  tbody tr:active td{background:#f9fbe7}
+  .tr-tot td{background:#F1F8E9;border-top:1.5px solid #1B5E20}
+  .warn-bar{font-size:12px;color:#B71C1C;background:#FFEBEE;padding:10px 13px;display:flex;align-items:center;gap:6px;font-weight:500}
+  .warn-bar svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;flex-shrink:0}
+
+  .mc-head-static{background:#E8F5E9;padding:14px 16px;border-bottom:.5px solid rgba(0,0,0,.06)}
+  .mc-head-static .ttl{font-size:14px;font-weight:600;color:#1B5E20;display:flex;align-items:center;gap:6px}
+  .mc-head-static .ttl svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mc-head-static .sub{font-size:12px;color:#388E3C;margin-top:2px}
+  /* ── Bottom nav ── */
+  .bottomnav{position:fixed;bottom:0;left:0;right:0;width:100%;background:#fff;border-top:.5px solid rgba(0,0,0,.1);z-index:100;padding:6px 0 max(10px,env(safe-area-inset-bottom));display:grid !important;grid-template-columns:1fr 1fr 1fr 1fr;box-sizing:border-box}
+  .bni{border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 0;width:100%}
+  .bni-dot{width:22px;height:4px;border-radius:2px;background:transparent;transition:background .15s;margin-bottom:1px}
+  .bni.on .bni-dot{background:#1B5E20}
+  .bni svg{width:22px;height:22px;fill:none;stroke:#aaa;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
+  .bni.on svg{stroke:#1B5E20}
+  .bni-lbl{font-size:10px;color:#aaa;transition:color .15s;font-weight:500;white-space:nowrap}
+  .bni.on .bni-lbl{color:#1B5E20}
+  .bni:active{opacity:.7}
+</style>
+</head>
+<body>
+
+<div id="installBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#1B5E20;color:#fff;padding:10px 16px;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)">
+  <svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;flex-shrink:0"><path d="M12 2C12 2 5 10 5 15a7 7 0 0014 0C19 10 12 2 12 2z"/></svg>
+  <span style="flex:1;font-size:13px;font-weight:500">Install Ink KI as app</span>
+  <button onclick="installApp()" style="padding:6px 14px;border-radius:8px;border:none;background:#fff;color:#1B5E20;font-size:13px;font-weight:700;cursor:pointer">Install</button>
+  <button onclick="document.getElementById('installBar').style.display='none'" style="width:28px;height:28px;border-radius:50%;border:none;background:rgba(255,255,255,.2);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">×</button>
+</div>
+
+<div class="topbar">
+  <div class="topbar-title">
+    <svg viewBox="0 0 24 24"><path d="M12 2C12 2 5 10 5 15a7 7 0 0014 0C19 10 12 2 12 2z"/></svg>
+    Ink KI Calculator
+  </div>
+  <button class="topbar-btn" onclick="resetAll()" aria-label="Reset all">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9H3m0 0l4-4m-4 4l4 4"/></svg>
+  </button>
+</div>
+
+<!-- Home page -->
+<div class="page" id="pgHome">
+  <div class="sheet-card">
+    <div class="stabs" id="stabs">
+      <button class="stab on" data-k="vinyl">Vinyl med.</button>
+      <button class="stab" data-k="eva">EVA med.</button>
+      <button class="stab" data-k="white">White ink</button>
+      <button class="stab" data-k="cmy">CMY ink</button>
+      <button class="stab" data-k="middem">Middem ink</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<!-- Settings page -->
+<div class="page" id="pgSettings" style="display:none">
+
+  <!-- PET INK master -->
+  <div class="master-card" style="margin-bottom:12px">
+    <div class="mc-head" onclick="toggleSection('petMaster','petChev')">
+      <div class="mc-head-left">
+        <div class="ttl">
+          <svg viewBox="0 0 24 24"><path d="M12 2C12 2 5 10 5 15a7 7 0 0014 0C19 10 12 2 12 2z"/></svg>
+          PET INK master
+        </div>
+        <div class="sub">Edit % for all PET sheets</div>
+      </div>
+      <div class="mc-chev" id="petChev">
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="mc-body" id="petMaster">
+      <div id="mcSections"></div>
+    </div>
+  </div>
+
+  <!-- POLY INK master -->
+  <div class="master-card" style="margin-top:12px">
+    <div class="mc-head" onclick="toggleSection('polyMaster','polyChev')">
+      <div class="mc-head-left">
+        <div class="ttl">
+          <svg viewBox="0 0 24 24"><path d="M9 3v11a3 3 0 006 0V3M6 3h12"/></svg>
+          POLY INK master
+        </div>
+        <div class="sub">Edit % for all POLY sheets</div>
+      </div>
+      <div class="mc-chev" id="polyChev">
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="mc-body" id="polyMaster">
+      <div id="polyMcSections"></div>
+    </div>
+  </div>
+
+  <!-- GitHub Sync -->
+  <div class="master-card" style="margin-top:12px">
+    <div class="mc-head" onclick="toggleSection('ghSync','ghChev')">
+      <div class="mc-head-left">
+        <div class="ttl">
+          <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+          GitHub auto sync
+        </div>
+        <div class="sub">Material data automatically save to GitHub</div>
+      </div>
+      <div class="mc-chev" id="ghChev">
+        <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="mc-body" id="ghSync">
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">GitHub Token (Personal Access Token)</div>
+          <input id="ghToken" type="password" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:13px;background:#fafafa">
+          <div style="font-size:11px;color:#888;margin-top:4px">Settings → Developer settings → Personal access tokens → repo scope</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">GitHub Username</div>
+            <input id="ghUser" type="text" placeholder="your-username" autocomplete="off" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:13px;background:#fafafa">
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Repository</div>
+            <input id="ghRepo" type="text" placeholder="ink-ki-calculator" autocomplete="off" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:13px;background:#fafafa">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="saveGhConfig()" style="flex:1;height:44px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round"><path d="M20 6L9 17l-5-5"/></svg>
+            Save config
+          </button>
+          <button onclick="syncToGitHub()" style="flex:1;height:44px;border-radius:12px;border:1.5px solid #A5D6A7;background:#E8F5E9;color:#1B5E20;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+            Sync now
+          </button>
+        </div>
+        <div id="ghStatus" style="font-size:12px;color:#888;text-align:center;min-height:16px"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- POLY INK page -->
+<div class="page" id="pgPoly" style="display:none">
+  <div class="sheet-card">
+    <div class="stabs" id="polytabs">
+      <button class="stab on" data-k="ketonic">Ketonic resin</button>
+      <button class="stab" data-k="white_poly">White poly ink</button>
+      <button class="stab" data-k="cmy_poly">C,M,Y poly ink</button>
+    </div>
+    <div class="sheet-body" id="polySheetBody"></div>
+  </div>
+</div>
+<!-- Material List page -->
+<div class="page" id="pgMaterials" style="display:none">
+  <div class="master-card">
+    <div style="padding:16px;display:flex;align-items:center;justify-content:space-between;border-bottom:.5px solid rgba(0,0,0,.1)">
+      <span style="font-size:18px;font-weight:500;color:#1a1a1a">Material master</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="exportMaterials()" style="height:36px;padding:0 12px;border-radius:8px;border:1.5px solid #A5D6A7;background:#E8F5E9;color:#1B5E20;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          Excel ↓
+        </button>
+        <label style="height:36px;padding:0 12px;border-radius:8px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10" transform="rotate(180 12 12)"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import
+          <input type="file" accept=".json,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onchange="importMaterials(event)" style="display:none">
+        </label>
+        <button onclick="addMaterial()" style="width:44px;height:44px;border-radius:6px;border:2px solid #1a1a1a;background:#fff;color:#1a1a1a;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:400;line-height:1">+</button>
+      </div>
+    </div>
+    <div id="matMasterBody" style="overflow-x:auto"></div>
+  </div>
+</div>
+<div class="bottomnav" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;width:100%;position:fixed;bottom:0;left:0;right:0">
+  <button class="bni on" aria-label="PET INK">
+    <div class="bni-dot"></div>
+    <svg viewBox="0 0 24 24"><path d="M9 3h6m-6 0v6l-4 9a1 1 0 00.9 1.5h12.2A1 1 0 0019 18l-4-9V3M9 3h6"/></svg>
+    <span class="bni-lbl">PET INK</span>
+  </button>
+  <button class="bni" aria-label="POLY INK">
+    <div class="bni-dot"></div>
+    <svg viewBox="0 0 24 24"><path d="M6 2h12v6l2 4v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8l2-4V2z"/><path d="M6 8h12"/></svg>
+    <span class="bni-lbl">POLY INK</span>
+  </button>
+  <button class="bni" aria-label="Material List">
+    <div class="bni-dot"></div>
+    <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 12h6M9 16h4"/></svg>
+    <span class="bni-lbl">Materials</span>
+  </button>
+  <button class="bni" aria-label="Settings">
+    <div class="bni-dot"></div>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span class="bni-lbl">Settings</span>
+  </button>
+</div>
+
+<script>
+const ORIG={
+  vinyl:{label:'Vinyl medium',step:'Step 1',base:150,rows:[
+    {m:'VINYL',g:'TEGS',t:'resin',p:0.25},
+    {m:'ETHYLE ACETATE',g:'SOLVNET',t:'solvent',p:0.335},
+    {m:'TOLUENE',g:'SOLVNET',t:'solvent',p:0.215},
+    {m:'MIBK',g:'SOLVNET',t:'solvent',p:0.12},
+    {m:'MEK',g:'SOLVENT',t:'solvent',p:0.08},
+  ]},
+  eva:{label:'EVA medium',step:'Step 2',base:160,rows:[
+    {m:'EVA',g:'4260',t:'resin',p:0.2},
+    {m:'ETHYLE ACETATE',g:'SOLVNET',t:'solvent',p:0.2},
+    {m:'TOLUENE',g:'SOLVNET',t:'solvent',p:0.6},
+  ]},
+  white:{label:'White ink',step:'',base:200,rows:[
+    {m:'VINYL MED.',g:'6.00%',t:'resin',p:0.25},
+    {m:'PIGMENT TIO2',g:'TR36',t:'pigment',p:0.25},
+    {m:'FILLER',g:'POLYGLOSS',t:'pigment',p:0.03},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'ADDITIVE',g:'ANTISTATIC',t:'additive',p:0.003},
+    {m:'ADDITIVE',g:'ARSR200D',t:'additive',p:0.005},
+    {m:'ADDITIVE',g:'ED 30',t:'additive',p:0.003},
+    {m:'ADDITIVE',g:'WND',t:'additive',p:0.0025},
+    {m:'PU MED.7679',g:'75.00%',t:'resin',p:0},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'MEK OF BATCH',g:'3.50%',t:'solvent',p:0.015},
+    {m:'MIBK OF BATCH',g:'5.50%',t:'solvent',p:0.025},
+    {m:'TOL OF BATCH',g:'50.00%',t:'solvent',p:0.0865},
+    {m:'EA OF BATCH',g:'50.00%',t:'solvent',p:0.13},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'EVA MED.',g:'4.00%',t:'resin',p:0.2},
+  ]},
+  cmy:{label:'CMY ink',step:'',base:200,rows:[
+    {m:'VINYL MED.',g:'6.00%',t:'resin',p:0.25},
+    {m:'PIGMENT TIO2',g:'TR36',t:'pigment',p:0.08},
+    {m:'FILLER',g:'POLYGLOSS',t:'pigment',p:0},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'ADDITIVE',g:'ANTISTATIC',t:'additive',p:0.003},
+    {m:'ADDITIVE',g:'ARSR200D',t:'additive',p:0.007},
+    {m:'ADDITIVE',g:'ED 30',t:'additive',p:0.003},
+    {m:'ADDITIVE',g:'WND',t:'additive',p:0.0025},
+    {m:'PU MED.7679',g:'75.00%',t:'resin',p:0},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'MEK OF BATCH',g:'4.00%',t:'solvent',p:0.025},
+    {m:'MIBK OF BATCH',g:'6.00%',t:'solvent',p:0.04},
+    {m:'TOL OF BATCH',g:'45.00%',t:'solvent',p:0.15},
+    {m:'EA OF BATCH',g:'55.00%',t:'solvent',p:0.24},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'EVA MED.',g:'4.00%',t:'resin',p:0.2},
+  ]},
+  middem:{label:'Middem ink',step:'',base:200,rows:[
+    {m:'VINYL MED.',g:'10%',t:'resin',p:0.40},
+    {m:'PU MED.7679',g:'55%',t:'resin',p:0.02},
+    {m:'MEK OF BATCH',g:'4.80%',t:'solvent',p:0.03},
+    {m:'MIBK OF BATCH',g:'3.20%',t:'solvent',p:0.05},
+    {m:'TOL OF BATCH',g:'55%',t:'solvent',p:0.13},
+    {m:'EA OF BATCH',g:'45%',t:'solvent',p:0.17},
+    {m:'EVA MED.',g:'4%',t:'resin',p:0.20},
+  ]}
+};
+
+const POLY_ORIG={
+  ketonic:{label:'Ketonic resin',step:'',base:160,rows:[
+    {m:'KETONIC',g:'US 100',t:'resin',p:0.50},
+    {m:'NBA',g:'SOLVENT',t:'solvent',p:0.00},
+    {m:'TOLUENE',g:'SOLVENT',t:'solvent',p:0.25},
+    {m:'IPA',g:'SOLVENT',t:'solvent',p:0.25},
+  ]},
+  white_poly:{label:'White poly ink',step:'',base:200,rows:[
+    {m:'TOL OF BATCH',g:'50%',t:'solvent',p:0.139},
+    {m:'IPA OF BATCH',g:'50%',t:'solvent',p:0.139},
+    {m:'NBA OF BATCH',g:'10%',t:'solvent',p:0.0995},
+    {m:'POLY. RESIN',g:'25.00%',t:'resin',p:0.25},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'PIGMENT TIO2',g:'TR36',t:'pigment',p:0.25},
+    {m:'FILLER',g:'POLYGLOSS',t:'pigment',p:0.03},
+    {m:'PE WAX',g:'AUM 9',t:'additive',p:0.0125},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'KETO. RESIN',g:'4%',t:'resin',p:0.08},
+  ]},
+  cmy_poly:{label:'C,M,Y poly ink',step:'',base:200,rows:[
+    {m:'TOL OF BATCH',g:'60%',t:'solvent',p:0.2938},
+    {m:'IPA OF BATCH',g:'40%',t:'solvent',p:0.1892},
+    {m:'NBA OF BATCH',g:'10%',t:'solvent',p:0.0945},
+    {m:'POLY. RESIN',g:'25.00%',t:'resin',p:0.25},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'PIGMENT TIO2',g:'pig',t:'pigment',p:0.08},
+    {m:'FILLER',g:'',t:'pigment',p:0.00},
+    {m:'PE WAX',g:'AUM 9',t:'additive',p:0.0125},
+    {m:'---',g:'',t:'sep',p:0},
+    {m:'KETO. RESIN',g:'4%',t:'resin',p:0.08},
+  ]}
+};
+
+const KEYS=Object.keys(ORIG);
+const POLY_KEYS=Object.keys(POLY_ORIG);
+const COLS={solvent:'#1D9E75',resin:'#7F77DD',pigment:'#BA7517',additive:'#9C27B0'};
+const PCLS={solvent:'ps',resin:'pr',pigment:'pp',additive:'pa'};
+const TYPES=['solvent','resin','pigment','additive'];
+const state=JSON.parse(JSON.stringify(ORIG));
+const polyState=JSON.parse(JSON.stringify(POLY_ORIG));
+const batches={vinyl:150,eva:160,white:200,cmy:200,middem:200};
+const polyBatches={ketonic:160,white_poly:200,cmy_poly:200};
+let activeSheet='vinyl';
+let activePolySheet='ketonic';
+
+const fp=v=>parseFloat(String(v).replace(/[^0-9.]/g,''))||0;
+const fk=(v,d=3)=>v.toFixed(d);
+const fpct=v=>(v*100).toFixed(2);
+
+function toggleSection(bodyId, chevId){
+  const body=document.getElementById(bodyId);
+  const chev=document.getElementById(chevId);
+  const open=body.classList.toggle('open');
+  chev.classList.toggle('open',open);
+  if(bodyId==='petMaster' && open) buildMaster();
+  if(bodyId==='polyMaster' && open) buildPolyMaster();
+  if(bodyId==='matMaster' && open) buildMatMaster();
+}
+
+function buildPolyMaster(){
+  document.getElementById('polyMcSections').innerHTML=POLY_KEYS.map(k=>{
+    const d=polyState[k];
+    const sum=d.rows.reduce((a,r)=>a+r.p,0);
+    const origSum=POLY_ORIG[k].rows.reduce((a,r)=>a+r.p,0);
+    const ok=Math.abs(sum-1)<=0.005;
+    return`<div class="mc-section" style="padding:0;border-bottom:1px solid rgba(0,0,0,.08)">
+      <div class="mc-drop-hd" onclick="toggleDrop('pmcd-${k}','pmda-${k}')" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#F9FBF9;user-select:none;-webkit-user-select:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:#1B5E20;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          <span style="font-size:13px;font-weight:700;color:#1B5E20;text-transform:uppercase;letter-spacing:.04em">${d.label}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:${ok?'#388E3C':'#C62828'};font-weight:600">${(sum*100).toFixed(2)}%</span>
+          <svg id="pmda-${k}" viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#1B5E20;stroke-width:2;stroke-linecap:round;transition:transform .25s"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+      <div id="pmcd-${k}" style="display:none;padding:0 16px 12px">
+        <div class="mc-col-hd" style="padding:8px 0 6px">
+          <span style="flex:1;width:25%;font-size:10px;color:#888">Material</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#888">Grade</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#388E3C;font-weight:700">OLD %</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#E65100;font-weight:700">NEW %</span>
+        </div>
+        ${d.rows.map((r,i)=>{
+          if(r.t==='sep') return`<div style="height:3px;background:#1B5E20;border-radius:2px;margin:4px 0"></div>`;
+          const orig=POLY_ORIG[k].rows[i].p;
+          const ch=Math.abs(r.p-orig)>0.00001;
+          return`<div class="mc-row">
+            <span style="flex:1;width:25%;font-size:13px;color:#1a1a1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.m}</span>
+            <span style="width:25%;text-align:center;font-size:12px;color:#999">${r.g}</span>
+            <span style="width:25%;text-align:center;font-size:12px;color:#388E3C;font-weight:600;font-variant-numeric:tabular-nums">${fpct(orig)}%</span>
+            <div style="width:25%;display:flex;align-items:center;gap:3px">
+              <input type="tel" inputmode="decimal" autocomplete="off" enterkeyhint="next" class="pf${ch?' ch':''}" id="pmp-${k}-${i}" value="${fpct(r.p)}" step="0.001" min="0" max="100" style="width:100%">
+              <span class="pu">%</span>
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="mc-tot" style="gap:12px;margin-top:6px">
+          <span class="mc-tot-lbl">Original</span>
+          <span style="font-size:12px;font-weight:600;color:#388E3C">${(origSum*100).toFixed(2)}%</span>
+          <span class="mc-tot-lbl" style="margin-left:4px">New</span>
+          <span class="${ok?'tok':'tbad'}" id="pmptot-${k}">${(sum*100).toFixed(2)}%</span>
+        </div>
+        <div style="display:flex;gap:8px;padding:10px 0 2px">
+          <button class="btn-apply" style="flex:1;height:42px;font-size:13px" onclick="applyPolySheet('${k}')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round"><path d="M20 6L9 17l-5-5"/></svg>
+            Master Save
+          </button>
+          <button class="btn-reset" style="height:42px;font-size:12px;padding:0 12px" onclick="resetPolySheet('${k}')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><path d="M3 12a9 9 0 109-9H3m0 0l4-4m-4 4l4 4"/></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  POLY_KEYS.forEach(k=>{
+    document.getElementById('polyMcSections').addEventListener('input',e=>{
+      if(!e.target.id.startsWith('pmp-')) return;
+      const parts=e.target.id.split('-');
+      const pk=parts[1],i=parseInt(parts[2]);
+      const v=fp(e.target.value)/100;
+      polyState[pk].rows[i].p=v;
+      const sum=polyState[pk].rows.reduce((a,r)=>a+r.p,0);
+      const ok=Math.abs(sum-1)<=0.005;
+      const tot=document.getElementById('pmptot-'+pk);
+      if(tot){tot.textContent=(sum*100).toFixed(2)+'%';tot.className=ok?'tok':'tbad';}
+      e.target.classList.toggle('ch',Math.abs(v-POLY_ORIG[pk].rows[i].p)>0.00001);
+      if(pk===activePolySheet) renderPolySheet(pk);
+    },{once:false});
+  });
+}
+
+function applyPolySheet(k){
+  const d=polyState[k];
+  const changes=[];
+  d.rows.forEach((r,i)=>{
+    if(r.t==='sep') return;
+    const el=document.getElementById('pmp-'+k+'-'+i);
+    if(!el) return;
+    const newVal=fp(el.value)/100;
+    const oldVal=POLY_ORIG[k].rows[i].p;
+    if(Math.abs(newVal-oldVal)>0.00001)
+      changes.push({name:r.m,old:(oldVal*100).toFixed(2),nw:(newVal*100).toFixed(2),i,newVal});
+  });
+  if(changes.length===0){showToast('No changes to save');return;}
+  const newVals={};
+  d.rows.forEach((_,i)=>{const el=document.getElementById('pmp-'+k+'-'+i);if(el) newVals[i]=fp(el.value)/100;});
+  const existing=document.getElementById('confirmOverlay');
+  if(existing) existing.remove();
+  const rowsHtml=changes.map(c=>`<tr>
+    <td style="padding:8px 10px;font-size:13px;font-weight:600;color:#1a1a1a;border-bottom:.5px solid rgba(0,0,0,.08)">${c.name}</td>
+    <td style="padding:8px 10px;font-size:13px;color:#388E3C;font-weight:700;text-align:center;border-bottom:.5px solid rgba(0,0,0,.08)">${c.old}%</td>
+    <td style="padding:8px 10px;font-size:13px;color:#E65100;font-weight:700;text-align:center;border-bottom:.5px solid rgba(0,0,0,.08)">${c.nw}%</td>
+  </tr>`).join('');
+  const ov=document.createElement('div');
+  ov.id='confirmOverlay';
+  ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:20px;width:100%;max-width:380px;overflow:hidden">
+    <div style="background:#FFF3E0;padding:16px;display:flex;align-items:center;gap:10px;border-bottom:.5px solid rgba(0,0,0,.08)">
+      <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:none;stroke:#E65100;stroke-width:2.5;stroke-linecap:round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div><div style="font-size:14px;font-weight:700;color:#E65100">Master save warning</div>
+      <div style="font-size:12px;color:#BF360C">${polyState[k].label} — ${changes.length} value${changes.length>1?'s':''} will change</div></div>
+    </div>
+    <div style="padding:12px 14px 6px"><table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#555;text-align:left;text-transform:uppercase">Material</th>
+        <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#388E3C;text-align:center;text-transform:uppercase">Old %</th>
+        <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#E65100;text-align:center;text-transform:uppercase">New %</th>
+      </tr></thead><tbody>${rowsHtml}</tbody>
+    </table></div>
+    <div style="padding:6px 14px 4px;font-size:12px;color:#888;text-align:center">Old % will be permanently replaced. Continue?</div>
+    <div style="display:flex;gap:10px;padding:12px 14px 16px">
+      <button onclick="document.getElementById('confirmOverlay').remove()" style="flex:1;height:46px;border-radius:12px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+      <button id="polyConfirmOk" style="flex:1;height:46px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:14px;font-weight:700;cursor:pointer">OK — Replace</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  document.getElementById('polyConfirmOk').addEventListener('click',()=>{
+    ov.remove();
+    Object.entries(newVals).forEach(([i,v])=>{polyState[k].rows[i].p=v;POLY_ORIG[k].rows[i].p=v;});
+    buildPolyMaster();
+    if(k===activePolySheet) renderPolySheet(k);
+    showToast('Saved: '+polyState[k].label);
+  });
+}
+
+function resetPolySheet(k){
+  POLY_ORIG[k].rows.forEach((r,i)=>{polyState[k].rows[i].p=r.p});
+  buildPolyMaster();
+  if(k===activePolySheet) renderPolySheet(k);
+}
+
+function buildMaster(){
+  document.getElementById('mcSections').innerHTML=KEYS.map(k=>{
+    const d=state[k];
+    const sum=d.rows.reduce((a,r)=>a+r.p,0);
+    const origSum=ORIG[k].rows.reduce((a,r)=>a+r.p,0);
+    const ok=Math.abs(sum-1)<=0.005;
+    return`<div class="mc-section" style="padding:0;border-bottom:1px solid rgba(0,0,0,.08)">
+      <div class="mc-drop-hd" onclick="toggleDrop('mcd-${k}','mda-${k}')" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;background:#F9FBF9;user-select:none;-webkit-user-select:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:#1B5E20;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          <span style="font-size:13px;font-weight:700;color:#1B5E20;text-transform:uppercase;letter-spacing:.04em">${d.label}${d.step?' — '+d.step:''}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;color:${ok?'#388E3C':'#C62828'};font-weight:600">${(sum*100).toFixed(2)}%</span>
+          <svg id="mda-${k}" viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#1B5E20;stroke-width:2;stroke-linecap:round;transition:transform .25s"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+      <div id="mcd-${k}" style="display:none;padding:0 16px 12px">
+        <div class="mc-col-hd" style="padding:8px 0 6px">
+          <span style="flex:1;width:25%;font-size:10px;color:#888">Material</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#888">Grade</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#388E3C;font-weight:700">OLD %</span>
+          <span style="width:25%;text-align:center;font-size:10px;color:#E65100;font-weight:700">NEW %</span>
+        </div>
+        ${d.rows.map((r,i)=>{
+          if(r.t==='sep') return`<div style="height:3px;background:#1B5E20;border-radius:2px;margin:4px 0"></div>`;
+          const orig=ORIG[k].rows[i].p;
+          const ch=Math.abs(r.p-orig)>0.00001;
+          return`<div class="mc-row">
+            <span style="flex:1;width:25%;font-size:13px;color:#1a1a1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.m}">${r.m}</span>
+            <span style="width:25%;text-align:center;font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.g}</span>
+            <span style="width:25%;text-align:center;font-size:12px;color:#388E3C;font-variant-numeric:tabular-nums;font-weight:600">${fpct(orig)}%</span>
+            <div style="width:25%;display:flex;align-items:center;gap:3px">
+              <input type="tel" inputmode="decimal" autocomplete="off" enterkeyhint="next" class="pf${ch?' ch':''}" id="mp-${k}-${i}" value="${fpct(r.p)}" step="0.001" min="0" max="100" style="width:100%">
+              <span class="pu">%</span>
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="mc-tot" style="gap:12px;margin-top:6px">
+          <span class="mc-tot-lbl">Original</span>
+          <span style="font-size:12px;font-weight:600;color:#388E3C">${(origSum*100).toFixed(2)}%</span>
+          <span class="mc-tot-lbl" style="margin-left:4px">New</span>
+          <span class="${ok?'tok':'tbad'}" id="mptot-${k}">${(sum*100).toFixed(2)}%</span>
+        </div>
+        <div style="display:flex;gap:8px;padding:10px 0 2px">
+          <button class="btn-apply" style="flex:1;height:42px;font-size:13px" onclick="applySheet('${k}')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round"><path d="M20 6L9 17l-5-5"/></svg>
+            Master Save
+          </button>
+          <button class="btn-reset" style="height:42px;font-size:12px;padding:0 12px" onclick="resetSheet('${k}')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><path d="M3 12a9 9 0 109-9H3m0 0l4-4m-4 4l4 4"/></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleDrop(bodyId, arrowId){
+  const body=document.getElementById(bodyId);
+  const arrow=document.getElementById(arrowId);
+  const open=body.style.display==='none';
+  body.style.display=open?'block':'none';
+  arrow.style.transform=open?'rotate(180deg)':'rotate(0deg)';
+}
+
+function applySheet(k){
+  const d=state[k];
+  const changes=[];
+  d.rows.forEach((r,i)=>{
+    const el=document.getElementById('mp-'+k+'-'+i);
+    if(!el) return;
+    const newVal=fp(el.value)/100;
+    const oldVal=ORIG[k].rows[i].p;
+    if(Math.abs(newVal-oldVal)>0.00001){
+      changes.push({name:r.m, old:(oldVal*100).toFixed(2), nw:(newVal*100).toFixed(2), i, newVal});
+    }
+  });
+  if(changes.length===0){showToast('No changes to save');return;}
+
+  const existing=document.getElementById('confirmOverlay');
+  if(existing) existing.remove();
+
+  const rowsHtml=changes.map(c=>`
+    <tr>
+      <td style="padding:8px 10px;font-size:13px;font-weight:600;color:#1a1a1a;border-bottom:.5px solid rgba(0,0,0,.08)">${c.name}</td>
+      <td style="padding:8px 10px;font-size:13px;color:#388E3C;font-weight:700;text-align:center;border-bottom:.5px solid rgba(0,0,0,.08)">${c.old}%</td>
+      <td style="padding:8px 10px;font-size:13px;color:#E65100;font-weight:700;text-align:center;border-bottom:.5px solid rgba(0,0,0,.08)">${c.nw}%</td>
+    </tr>`).join('');
+
+  const newVals={};
+  d.rows.forEach((r,i)=>{
+    const el=document.getElementById('mp-'+k+'-'+i);
+    if(el) newVals[i]=fp(el.value)/100;
+  });
+
+  const ov=document.createElement('div');
+  ov.id='confirmOverlay';
+  ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:380px;overflow:hidden">
+      <div style="background:#FFF3E0;padding:16px;display:flex;align-items:center;gap:10px;border-bottom:.5px solid rgba(0,0,0,.08)">
+        <svg viewBox="0 0 24 24" style="width:22px;height:22px;flex-shrink:0;fill:none;stroke:#E65100;stroke-width:2.5;stroke-linecap:round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#E65100">Master save warning</div>
+          <div style="font-size:12px;color:#BF360C;margin-top:1px">${d.label} — ${changes.length} value${changes.length>1?'s':''} will change</div>
+        </div>
+      </div>
+      <div style="padding:12px 14px 6px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>
+            <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#555;text-align:left;text-transform:uppercase;letter-spacing:.04em">Material</th>
+            <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#388E3C;text-align:center;text-transform:uppercase;letter-spacing:.04em">Old %</th>
+            <th style="padding:6px 10px;font-size:11px;font-weight:700;color:#E65100;text-align:center;text-transform:uppercase;letter-spacing:.04em">New %</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <div style="padding:6px 14px 4px;font-size:12px;color:#888;text-align:center">Old % will be permanently replaced. Continue?</div>
+      <div style="display:flex;gap:10px;padding:12px 14px 16px">
+        <button onclick="document.getElementById('confirmOverlay').remove()" style="flex:1;height:46px;border-radius:12px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="confirmOkBtn" style="flex:1;height:46px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:14px;font-weight:700;cursor:pointer">OK — Replace</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+
+  document.getElementById('confirmOkBtn').addEventListener('click',()=>{
+    ov.remove();
+    Object.entries(newVals).forEach(([i,v])=>{
+      state[k].rows[i].p=v;
+      ORIG[k].rows[i].p=v;
+    });
+    try{
+      const saved=JSON.parse(localStorage.getItem('inkki_saved')||'{}');
+      saved[k]=state[k].rows.map(r=>r.p);
+      localStorage.setItem('inkki_saved',JSON.stringify(saved));
+    }catch(e){}
+    buildMaster();
+    if(k===activeSheet) renderSheet(k);
+    showToast('Saved: '+state[k].label);
+  });
+}
+
+function confirmSave(k){}
+
+function saveSheet(k){
+  state[k].rows.forEach((_,i)=>{
+    const el=document.getElementById('mp-'+k+'-'+i);
+    if(el) state[k].rows[i].p=fp(el.value)/100;
+  });
+  try{
+    const saved=JSON.parse(localStorage.getItem('inkki_saved')||'{}');
+    saved[k]=state[k].rows.map(r=>r.p);
+    localStorage.setItem('inkki_saved',JSON.stringify(saved));
+  }catch(e){}
+  buildMaster();
+  if(k===activeSheet) renderSheet(k);
+  showToast('Saved: '+state[k].label);
+}
+
+function showToast(msg){
+  let t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#1B5E20;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;font-weight:600;z-index:999;transition:opacity .3s';document.body.appendChild(t);}
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._t);t._t=setTimeout(()=>{t.style.opacity='0'},2000);
+}
+
+function loadSaved(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('inkki_saved')||'{}');
+    KEYS.forEach(k=>{
+      if(saved[k]) saved[k].forEach((p,i)=>{if(state[k].rows[i]) state[k].rows[i].p=p;});
+    });
+  }catch(e){}
+}
+
+function resetSheet(k){
+  ORIG[k].rows.forEach((r,i)=>{state[k].rows[i].p=r.p});
+  buildMaster();
+  if(k===activeSheet) renderSheet(k);
+}
+
+function applyAll(){
+  KEYS.forEach(k=>{
+    state[k].rows.forEach((_,i)=>{
+      const el=document.getElementById('mp-'+k+'-'+i);
+      if(el) state[k].rows[i].p=fp(el.value)/100;
+    });
+  });
+  updateTotals();
+  renderSheet(activeSheet);
+}
+
+function updateTotals(){
+  KEYS.forEach(k=>{
+    const sum=state[k].rows.reduce((a,r)=>a+r.p,0);
+    const ok=Math.abs(sum-1)<=0.005;
+    const el=document.getElementById('mptot-'+k);
+    if(el){el.textContent=(sum*100).toFixed(2)+'%';el.className=ok?'tok':'tbad';}
+    state[k].rows.forEach((_,i)=>{
+      const inp=document.getElementById('mp-'+k+'-'+i);
+      if(inp) inp.classList.toggle('ch',Math.abs(state[k].rows[i].p-ORIG[k].rows[i].p)>0.00001);
+    });
+  });
+}
+
+function resetAll(){
+  KEYS.forEach(k=>{
+    ORIG[k].rows.forEach((r,i)=>{state[k].rows[i].p=r.p});
+    batches[k]=ORIG[k].base;
+  });
+  if(document.getElementById('pgSettings').style.display!=='none') buildMaster();
+  renderSheet(activeSheet);
+}
+
+document.addEventListener('input',e=>{
+  if(!e.target.classList.contains('pf'))return;
+  const[,k,i]=e.target.id.split('-');
+  const v=fp(e.target.value)/100;
+  state[k].rows[parseInt(i)].p=v;
+  e.target.classList.toggle('ch',Math.abs(v-ORIG[k].rows[parseInt(i)].p)>0.00001);
+  const sum=state[k].rows.reduce((a,r)=>a+r.p,0);
+  const ok=Math.abs(sum-1)<=0.005;
+  const tot=document.getElementById('mptot-'+k);
+  if(tot){tot.textContent=(sum*100).toFixed(2)+'%';tot.className=ok?'tok':'tbad';}
+  if(k===activeSheet) renderSheet(k);
+});
+
+function updateSheetTable(k){
+  const tbl=document.getElementById('sheet-table-'+k);
+  if(!tbl) return;
+  const d=state[k];
+  const batch=batches[k]||0;
+  let sumPct=0;
+  d.rows.forEach(r=>{if(r.t!=='sep') sumPct+=r.p});
+  const totalKg=sumPct*batch;
+
+  const rowsHtml=d.rows.map(r=>{
+    if(r.t==='sep') return`<tr><td colspan="4" style="padding:0;border-top:2.5px solid #1B5E20;background:#F1F8E9;height:3px"></td></tr>`;
+    return`<tr>
+      <td class="td-mat">${r.m}</td>
+      <td class="td-grade">${r.g}</td>
+      <td class="td-pct">${fpct(r.p)}%</td>
+      <td class="td-kg">${fk(r.p*batch)}</td>
+    </tr>`;
+  }).join('');
+
+  const warn=Math.abs(sumPct-1)>0.005?`<div class="warn-bar"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Total ${(sumPct*100).toFixed(2)}% — expected 100%</div>`:'';
+
+  tbl.innerHTML=`<div class="mat-list">
+    <table class="mat-table">
+      <thead><tr>
+        <th class="th-mat">Material</th>
+        <th class="th-grade">Grade</th>
+        <th class="th-pct">%</th>
+        <th class="th-kg">Batch kg</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr class="tr-tot">
+        <td class="td-mat" style="font-weight:700;color:#1B5E20">Total</td>
+        <td></td>
+        <td class="td-pct" style="color:#388E3C;font-weight:700">${(sumPct*100).toFixed(2)}%</td>
+        <td class="td-kg" style="color:#1B5E20;font-size:15px;font-weight:700">${fk(totalKg)}</td>
+      </tr></tfoot>
+    </table>${warn}
+  </div>`;
+}
+
+function renderSheet(k){
+  const d=state[k];
+  const batch=batches[k]||0;
+  const tots={solvent:0,resin:0,pigment:0,additive:0};
+  let sumPct=0;
+  d.rows.forEach(r=>{if(r.t!=='sep'){tots[r.t]=(tots[r.t]||0)+r.p;sumPct+=r.p;}});
+  const totalKg=sumPct*batch;
+  const activeT=TYPES.filter(t=>tots[t]>0);
+
+  const kpisHtml='';
+
+  const barHtml='';
+
+  const rowsHtml=d.rows.map(r=>{
+    if(r.t==='sep') return`<tr><td colspan="4" style="padding:0;border-top:2.5px solid #1B5E20;background:#F1F8E9;height:3px"></td></tr>`;
+    return`<tr>
+      <td class="td-mat">${r.m}</td>
+      <td class="td-grade">${r.g}</td>
+      <td class="td-pct">${fpct(r.p)}%</td>
+      <td class="td-kg">${fk(r.p*batch)}</td>
+    </tr>`;
+  }).join('');
+
+  const warnHtml=Math.abs(sumPct-1)>0.005
+    ?`<div class="warn-bar"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Total ${(sumPct*100).toFixed(2)}% — expected 100%</div>`
+    :'';
+
+  const vmRows=[
+    {m:'VINYL',g:'TEGS',t:'resin',p:0.25},
+    {m:'ETHYLE ACETATE',g:'SOLVNET',t:'solvent',p:0.335},
+    {m:'TOLUENE',g:'SOLVNET',t:'solvent',p:0.215},
+    {m:'MIBK',g:'SOLVNET',t:'solvent',p:0.12},
+    {m:'MEK',g:'SOLVENT',t:'solvent',p:0.08},
+  ];
+  const vmBatch=160;
+  const vmSum=vmRows.reduce((a,r)=>a+r.p,0);
+  const vmKg=vmSum*vmBatch;
+  const vinylMiddemHtml= k!=='middem' ? '' : `
+    <div style="margin-top:14px">
+      <div style="font-size:12px;font-weight:700;color:#1B5E20;text-transform:uppercase;letter-spacing:.06em;padding:10px 13px;background:#F1F8E9;border-radius:14px 14px 0 0;border:.5px solid rgba(0,0,0,.08);border-bottom:none;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+        Vinyl middem — batch ${vmBatch} kg
+      </div>
+      <div class="mat-list" style="border-radius:0 0 14px 14px">
+        <table class="mat-table">
+          <thead><tr>
+            <th class="th-mat">Material</th>
+            <th class="th-grade">Grade</th>
+            <th class="th-pct">%</th>
+            <th class="th-kg">Batch kg</th>
+          </tr></thead>
+          <tbody>${vmRows.map(r=>`<tr>
+            <td class="td-mat">${r.m}</td>
+            <td class="td-grade">${r.g}</td>
+            <td class="td-pct">${fpct(r.p)}%</td>
+            <td class="td-kg">${fk(r.p*vmBatch)}</td>
+          </tr>`).join('')}</tbody>
+          <tfoot><tr class="tr-tot">
+            <td class="td-mat" style="font-weight:700;color:#1B5E20">Total</td>
+            <td></td>
+            <td class="td-pct" style="color:#388E3C;font-weight:700">${(vmSum*100).toFixed(2)}%</td>
+            <td class="td-kg" style="color:#1B5E20;font-size:15px;font-weight:700">${fk(vmKg)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>`;
+
+  document.getElementById('sheetBody').innerHTML=`
+    <div style="padding:12px 13px 4px;font-size:13px;font-weight:700;color:#1B5E20;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px">
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+      ${d.label}${d.step?' — '+d.step:''}
+    </div>
+    <div class="batch-row">
+      <label class="batch-lbl">
+        <svg viewBox="0 0 24 24"><path d="M12 3v1m0 16v1M4.22 4.22l.7.7m12.16 12.16l.7.7M3 12h1m16 0h1M4.92 19.08l.7-.7M18.36 5.64l.7-.7"/><circle cx="12" cy="12" r="4"/></svg>
+        TOTAL BATCH KG
+      </label>
+      <input type="tel" enterkeyhint="done" class="batch-inp" id="bi-${k}" value="${batch}" autocomplete="off">
+      <span class="batch-unit">kg</span>
+    </div>
+    <div id="sheet-table-${k}"></div>
+    ${vinylMiddemHtml}`;
+
+  updateSheetTable(k);
+
+  document.getElementById('bi-'+k).addEventListener('input',e=>{
+    batches[k]=fp(e.target.value);
+    updateSheetTable(k);
+  });
+}
+
+document.getElementById('stabs').addEventListener('click',e=>{
+  const btn=e.target.closest('.stab');
+  if(!btn)return;
+  activeSheet=btn.dataset.k;
+  document.querySelectorAll('#stabs .stab').forEach(b=>b.classList.toggle('on',b===btn));
+  renderSheet(activeSheet);
+});
+
+document.getElementById('polytabs').addEventListener('click',e=>{
+  const btn=e.target.closest('.stab');
+  if(!btn)return;
+  activePolySheet=btn.dataset.k;
+  document.querySelectorAll('#polytabs .stab').forEach(b=>b.classList.toggle('on',b===btn));
+  renderPolySheet(activePolySheet);
+});
+
+function renderPolySheet(k){
+  const d=polyState[k];
+  const batch=polyBatches[k]||0;
+  let sumPct=0;
+  d.rows.forEach(r=>{if(r.t!=='sep') sumPct+=r.p});
+  const totalKg=sumPct*batch;
+
+  const rowsHtml=d.rows.map(r=>{
+    if(r.t==='sep') return`<tr><td colspan="4" style="padding:0;border-top:2.5px solid #1B5E20;background:#F1F8E9;height:3px"></td></tr>`;
+    return`<tr>
+      <td class="td-mat">${r.m}</td>
+      <td class="td-grade">${r.g}</td>
+      <td class="td-pct">${fpct(r.p)}%</td>
+      <td class="td-kg">${fk(r.p*batch)}</td>
+    </tr>`;
+  }).join('');
+
+  const warn=Math.abs(sumPct-1)>0.005?`<div class="warn-bar"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Total ${(sumPct*100).toFixed(2)}% — expected 100%</div>`:'';
+
+  document.getElementById('polySheetBody').innerHTML=`
+    <div style="padding:12px 13px 4px;font-size:13px;font-weight:700;color:#1B5E20;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px">
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+      ${d.label}
+    </div>
+    <div class="batch-row">
+      <label class="batch-lbl">
+        <svg viewBox="0 0 24 24"><path d="M12 3v1m0 16v1M4.22 4.22l.7.7m12.16 12.16l.7.7M3 12h1m16 0h1M4.92 19.08l.7-.7M18.36 5.64l.7-.7"/><circle cx="12" cy="12" r="4"/></svg>
+        TOTAL BATCH KG
+      </label>
+      <input type="tel" enterkeyhint="done" class="batch-inp" id="pbi-${k}" value="${batch}" autocomplete="off">
+      <span class="batch-unit">kg</span>
+    </div>
+    <div id="poly-table-${k}"></div>`;
+
+  updatePolyTable(k);
+  document.getElementById('pbi-'+k).addEventListener('input',e=>{polyBatches[k]=fp(e.target.value);updatePolyTable(k)});
+}
+
+function updatePolyTable(k){
+  const tbl=document.getElementById('poly-table-'+k);
+  if(!tbl) return;
+  const d=polyState[k];
+  const batch=polyBatches[k]||0;
+  let sumPct=0;
+  d.rows.forEach(r=>{if(r.t!=='sep') sumPct+=r.p});
+  const totalKg=sumPct*batch;
+  const rowsHtml=d.rows.map(r=>{
+    if(r.t==='sep') return`<tr><td colspan="4" style="padding:0;border-top:2.5px solid #1B5E20;background:#F1F8E9;height:3px"></td></tr>`;
+    return`<tr>
+      <td class="td-mat">${r.m}</td>
+      <td class="td-grade">${r.g}</td>
+      <td class="td-pct">${fpct(r.p)}%</td>
+      <td class="td-kg">${fk(r.p*batch)}</td>
+    </tr>`;
+  }).join('');
+  const warn=Math.abs(sumPct-1)>0.005?`<div class="warn-bar"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Total ${(sumPct*100).toFixed(2)}%</div>`:'';
+  tbl.innerHTML=`<div class="mat-list">
+    <table class="mat-table">
+      <thead><tr>
+        <th class="th-mat">Material</th>
+        <th class="th-grade">Grade</th>
+        <th class="th-pct">%</th>
+        <th class="th-kg">Batch kg</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr class="tr-tot">
+        <td class="td-mat" style="font-weight:700;color:#1B5E20">Total</td>
+        <td></td>
+        <td class="td-pct" style="color:#388E3C;font-weight:700">${(sumPct*100).toFixed(2)}%</td>
+        <td class="td-kg" style="color:#1B5E20;font-size:15px;font-weight:700">${fk(totalKg)}</td>
+      </tr></tfoot>
+    </table>${warn}
+  </div>`;
+}
+
+document.querySelectorAll('.bni').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.bni').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    const lbl=b.getAttribute('aria-label');
+    document.getElementById('pgHome').style.display=(lbl==='PET INK')?'':'none';
+    document.getElementById('pgSettings').style.display=(lbl==='Settings')?'':'none';
+    document.getElementById('pgPoly').style.display=(lbl==='POLY INK')?'':'none';
+    document.getElementById('pgMaterials').style.display=(lbl==='Material List')?'':'none';
+    if(lbl==='POLY INK') renderPolySheet(activePolySheet);
+    if(lbl==='Material List') buildMatMaster();
+    if(lbl==='Settings'){
+      const body=document.getElementById('petMaster');
+      const chev=document.getElementById('petChev');
+      if(!body.classList.contains('open')){
+        body.classList.add('open');
+        chev.classList.add('open');
+      }
+      buildMaster();
+      loadGhConfigUI();
+    }
+  });
+});
+
+function buildMaterialList(){
+  // Collect unique materials from all sheets
+  const allMats={};
+  const allSheets=[
+    ...KEYS.map(k=>({src:'PET INK',sheet:ORIG[k].label,...ORIG[k]})),
+    ...POLY_KEYS.map(k=>({src:'POLY INK',sheet:POLY_ORIG[k].label,...POLY_ORIG[k]}))
+  ];
+  allSheets.forEach(s=>{
+    s.rows.forEach(r=>{
+      if(r.t==='sep') return;
+      const key=r.m.trim().toUpperCase();
+      if(!allMats[key]) allMats[key]={m:r.m,g:r.g,sheets:[]};
+      if(!allMats[key].sheets.includes(s.sheet)) allMats[key].sheets.push(s.sheet);
+    });
+  });
+  const sorted=Object.values(allMats).sort((a,b)=>a.m.localeCompare(b.m));
+  document.getElementById('matListBody').innerHTML=`
+    <table class="mat-table" style="width:100%">
+      <thead><tr>
+        <th class="th-mat">Material</th>
+        <th class="th-grade">Grade</th>
+        <th style="text-align:left;padding:9px 10px;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;background:#F1F8E9">Used in</th>
+      </tr></thead>
+      <tbody>${sorted.map(m=>`<tr>
+        <td class="td-mat">${m.m}</td>
+        <td class="td-grade">${m.g}</td>
+        <td style="padding:11px 10px;font-size:11px;color:#555;border-top:1px solid rgba(0,0,0,.15)">${m.sheets.join(', ')}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// GitHub sync
+function saveGhConfig(){
+  const token=document.getElementById('ghToken').value.trim();
+  const user=document.getElementById('ghUser').value.trim();
+  const repo=document.getElementById('ghRepo').value.trim();
+  if(!token||!user||!repo){showToast('Fill all fields');return;}
+  try{
+    localStorage.setItem('gh_token',token);
+    localStorage.setItem('gh_user',user);
+    localStorage.setItem('gh_repo',repo);
+  }catch(e){}
+  showToast('Config saved!');
+  document.getElementById('ghStatus').textContent='Config saved ✓ — tap Sync now to upload';
+}
+
+async function syncToGitHub(){
+  const token=localStorage.getItem('gh_token')||'';
+  const user=localStorage.getItem('gh_user')||'';
+  const repo=localStorage.getItem('gh_repo')||'';
+  if(!token||!user||!repo){showToast('Setup GitHub config first');return;}
+  const status=document.getElementById('ghStatus');
+  status.textContent='Syncing...';
+  status.style.color='#388E3C';
+  const content=btoa(unescape(encodeURIComponent(JSON.stringify(matMasterList,null,2))));
+  const filePath='inkki_materials.json';
+  const apiUrl=`https://api.github.com/repos/${user}/${repo}/contents/${filePath}`;
+  try{
+    // Check if file exists to get SHA
+    let sha='';
+    const check=await fetch(apiUrl,{headers:{'Authorization':'token '+token,'Accept':'application/vnd.github.v3+json'}});
+    if(check.ok){const d=await check.json();sha=d.sha||'';}
+    // Push file
+    const body={message:'Auto sync: InkKI material data '+new Date().toISOString().slice(0,16),content,committer:{name:'InkKI App',email:'inkki@app.com'}};
+    if(sha) body.sha=sha;
+    const res=await fetch(apiUrl,{method:'PUT',headers:{'Authorization':'token '+token,'Accept':'application/vnd.github.v3+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(res.ok){
+      status.textContent='✓ Synced to GitHub! '+new Date().toLocaleTimeString();
+      status.style.color='#1B5E20';
+      showToast('Synced to GitHub!');
+    } else {
+      const err=await res.json();
+      status.textContent='Error: '+(err.message||res.status);
+      status.style.color='#C62828';
+    }
+  }catch(e){
+    status.textContent='Network error: '+e.message;
+    status.style.color='#C62828';
+  }
+}
+
+async function loadFromGitHub(){
+  const token=localStorage.getItem('gh_token')||'';
+  const user=localStorage.getItem('gh_user')||'';
+  const repo=localStorage.getItem('gh_repo')||'';
+  if(!token||!user||!repo) return;
+  try{
+    const res=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/inkki_materials.json`,{headers:{'Authorization':'token '+token,'Accept':'application/vnd.github.v3+json'}});
+    if(!res.ok) return;
+    const d=await res.json();
+    const data=JSON.parse(decodeURIComponent(escape(atob(d.content))));
+    if(Array.isArray(data)&&data.length>0){
+      matMasterList=data;
+      localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));
+    }
+  }catch(e){}
+}
+
+function loadGhConfigUI(){
+  try{
+    const t=localStorage.getItem('gh_token')||'';
+    const u=localStorage.getItem('gh_user')||'';
+    const r=localStorage.getItem('gh_repo')||'';
+    if(document.getElementById('ghToken')) document.getElementById('ghToken').value=t;
+    if(document.getElementById('ghUser')) document.getElementById('ghUser').value=u;
+    if(document.getElementById('ghRepo')) document.getElementById('ghRepo').value=r;
+    if(t&&u&&r&&document.getElementById('ghStatus'))
+      document.getElementById('ghStatus').textContent='Config loaded — ready to sync';
+  }catch(e){}
+}
+let matMasterList = JSON.parse(localStorage.getItem('inkki_matmaster') || '[]');
+let _matFilter='all';
+
+function exportMaterials(){
+  if(matMasterList.length===0){showToast('No materials to export');return;}
+  if(typeof XLSX==='undefined'){showToast('Excel library loading...');return;}
+
+  const wsData=[
+    ['TYPE','COMPANY NAME','COMPANY CODE','USED IN','NOTE'],
+    ...matMasterList.map(m=>[
+      (m.type||'').toUpperCase(),
+      m.company||'',
+      m.compCode||'',
+      m.used||'',
+      m.note||''
+    ])
+  ];
+
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols']=[{wch:14},{wch:24},{wch:20},{wch:18},{wch:28}];
+
+  // Header style (row 0)
+  const headerRange=XLSX.utils.decode_range(ws['!ref']);
+  for(let c=headerRange.s.c;c<=headerRange.e.c;c++){
+    const cell=XLSX.utils.encode_cell({r:0,c});
+    if(ws[cell]){
+      ws[cell].s={
+        font:{bold:true,color:{rgb:'FFFFFF'}},
+        fill:{fgColor:{rgb:'1B5E20'}},
+        alignment:{horizontal:'center'}
+      };
+    }
+  }
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Materials');
+
+  const date=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,`InkKI_Materials_${date}.xlsx`);
+  showToast('Exported '+matMasterList.length+' materials to Excel');
+}
+
+function importMaterials(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+
+  if(ext==='json'){
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(!Array.isArray(data)) throw new Error('Invalid');
+        const newItems=data.filter(d=>d.type);
+        matMasterList=[...matMasterList,...newItems];
+        try{localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));}catch(err){}
+        buildMatMaster();
+        showToast('Imported '+newItems.length+' materials');
+      }catch(err){showToast('Import failed');}
+    };
+    reader.readAsText(file);
+
+  } else if(['xlsx','xls','csv'].includes(ext)){
+    if(typeof XLSX==='undefined'){showToast('Loading Excel library...');return;}
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        if(rows.length<2){showToast('Excel empty');return;}
+
+        // Show column mapping preview
+        showExcelPreview(rows);
+      }catch(err){showToast('Excel read failed: '+err.message);}
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  e.target.value='';
+}
+
+let _excelRows=[];
+function showExcelPreview(rows){
+  _excelRows=rows;
+  const headers=rows[0].map((h,i)=>({h:String(h||'Col '+(i+1)),i}));
+  const sample=rows.slice(1,4);
+
+  const colOpts=headers.map(h=>`<option value="${h.i}">${h.h}</option>`).join('');
+  const noneOpt='<option value="-1">— skip —</option>';
+
+  const existing=document.getElementById('excelMapOverlay');
+  if(existing) existing.remove();
+
+  const ov=document.createElement('div');
+  ov.id='excelMapOverlay';
+  ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px';
+
+  const previewRows=sample.map(r=>`<tr>${headers.map(h=>`<td style="padding:5px 8px;font-size:11px;border-bottom:.5px solid rgba(0,0,0,.08);color:#555;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r[h.i]||''}</td>`).join('')}</tr>`).join('');
+
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:420px;overflow:hidden;margin-top:10px">
+      <div style="background:#E8F5E9;padding:14px 16px;border-bottom:.5px solid rgba(0,0,0,.08)">
+        <div style="font-size:15px;font-weight:700;color:#1B5E20;display:flex;align-items:center;gap:8px">
+          <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          Excel import — columns map કરો
+        </div>
+        <div style="font-size:12px;color:#388E3C;margin-top:2px">${rows.length-1} rows મળ્યા</div>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#555;margin-bottom:6px;text-transform:uppercase">Preview</div>
+        <div style="overflow-x:auto;margin-bottom:14px">
+          <table style="border-collapse:collapse;min-width:100%">
+            <thead><tr>${headers.map(h=>`<th style="padding:5px 8px;font-size:11px;font-weight:700;color:#1B5E20;text-align:left;border-bottom:1.5px solid #A5D6A7;white-space:nowrap">${h.h}</th>`).join('')}</tr></thead>
+            <tbody>${previewRows}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[
+            {id:'mapType',label:'TYPE'},
+            {id:'mapCompany',label:'COMPANY NAME'},
+            {id:'mapCode',label:'COMPANY CODE'},
+            {id:'mapUsed',label:'USED IN'},
+            {id:'mapNote',label:'NOTE'},
+          ].map(f=>`<div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;font-weight:600;color:#333;width:110px;flex-shrink:0">${f.label}</span>
+            <select id="${f.id}" style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #ddd;font-size:12px;background:#fafafa">
+              ${noneOpt}${colOpts}
+            </select>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;padding:12px 16px 16px">
+        <button onclick="document.getElementById('excelMapOverlay').remove()" style="flex:1;height:46px;border-radius:12px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+        <button onclick="processExcelImport()" style="flex:1;height:46px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Import</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+function processExcelImport(){
+  const rows=_excelRows;
+  const get=id=>{const el=document.getElementById(id);return el?parseInt(el.value):-1;};
+  const mapType=get('mapType');
+  const mapCo=get('mapCompany');
+  const mapCode=get('mapCode');
+  const mapUsed=get('mapUsed');
+  const mapNote=get('mapNote');
+  const typeMap={'s':'solvent','solvent':'solvent','r':'resin','resin':'resin','p':'pigment','pigment':'pigment','a':'additive','additive':'additive'};
+  let added=0;
+  rows.slice(1).forEach(row=>{
+    if(!row.some(c=>c)) return;
+    const rawType=mapType>=0?String(row[mapType]||'').toLowerCase().trim():'';
+    const type=typeMap[rawType]||rawType||'additive';
+    const company=mapCo>=0?String(row[mapCo]||'').trim():'';
+    const compCode=mapCode>=0?String(row[mapCode]||'').trim().toUpperCase():'';
+    const used=mapUsed>=0?String(row[mapUsed]||'').trim():'';
+    const note=mapNote>=0?String(row[mapNote]||'').trim():'';
+    if(!type&&!company&&!compCode) return;
+    matMasterList.push({type,company,compCode,used,note});
+    added++;
+  });
+  try{localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));}catch(e){}
+  document.getElementById('excelMapOverlay').remove();
+  buildMatMaster();
+  showToast('✓ '+added+' materials imported');
+  if(localStorage.getItem('gh_token')) syncToGitHub();
+}
+
+function setMatFilter(t){_matFilter=t;buildMatMaster();}
+function setCompFilter(c){const b=document.getElementById('matMasterBody');if(b)b._filterComp=c;buildMatMaster();}
+
+function buildMatMaster(){
+  const body=document.getElementById('matMasterBody');
+  if(!body) return;
+  if(matMasterList.length===0){
+    body.innerHTML=`<div style="padding:32px 16px;text-align:center;font-size:13px;color:#888">No materials added yet.<br>Tap "+" to start.</div>`;
+    return;
+  }
+  const types=['all',...new Set(matMasterList.map(m=>m.type).filter(Boolean)).values()].sort((a,b)=>{if(a==='all')return-1;if(b==='all')return 1;if(a==='solvent')return 1;if(b==='solvent')return-1;return a.localeCompare(b)});
+  const filtered=_matFilter==='all'?matMasterList:matMasterList.filter(m=>m.type===_matFilter);
+
+  const filterBtns=types.map(t=>`<button onclick="setMatFilter('${t}')" style="padding:6px 13px;border-radius:20px;border:1.5px solid ${_matFilter===t?'#1B5E20':'#ddd'};background:${_matFilter===t?'#1B5E20':'#fff'};color:${_matFilter===t?'#fff':'#555'};font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;text-transform:capitalize;flex-shrink:0">${t==='all'?'All':t}</button>`).join('');
+
+  body.innerHTML=`
+  <div style="padding:8px 14px 0;border-bottom:.5px solid rgba(0,0,0,.08)">
+    <div style="font-size:10px;font-weight:700;color:#388E3C;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Type</div>
+    <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none">
+      ${filterBtns}
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
+    <thead><tr style="background:#F1F8E9">
+      <th style="padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;border-bottom:.5px solid rgba(0,0,0,.1);width:22%">Type</th>
+      <th style="padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;border-bottom:.5px solid rgba(0,0,0,.1);width:28%">Company</th>
+      <th style="padding:9px 10px;text-align:left;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;border-bottom:.5px solid rgba(0,0,0,.1);width:28%">Code</th>
+      <th style="padding:9px 6px;text-align:center;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;border-bottom:.5px solid rgba(0,0,0,.1);width:14%">Used</th>
+      <th style="padding:9px 6px;text-align:center;font-size:11px;font-weight:700;color:#33691E;text-transform:uppercase;letter-spacing:.04em;border-bottom:.5px solid rgba(0,0,0,.1);width:8%"></th>
+    </tr></thead>
+    <tbody>${filtered.map(m=>{
+      const i=matMasterList.indexOf(m);
+      return`<tr style="border-bottom:.5px solid rgba(0,0,0,.07)">
+        <td style="padding:9px 10px;font-size:13px;font-weight:600;color:#1a1a1a;vertical-align:top;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:capitalize">${m.type}
+          ${m.note?`<div style="font-size:10px;color:#888;font-weight:400;white-space:normal;margin-top:1px">${m.note}</div>`:''}
+        </td>
+        <td style="padding:9px 10px;font-size:12px;color:#333;vertical-align:top;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.company||'—'}</td>
+        <td style="padding:9px 10px;font-size:12px;color:#333;vertical-align:top;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.compCode||'—'}</td>
+        <td style="padding:9px 6px;text-align:center;vertical-align:top">
+          ${(m.used||'').includes('PET INK')?`<span style="display:inline-block;font-size:9px;padding:2px 5px;border-radius:8px;background:#E8F5E9;color:#1B5E20;font-weight:700;margin:1px">PET</span>`:''}
+          ${(m.used||'').includes('POLY INK')?`<span style="display:inline-block;font-size:9px;padding:2px 5px;border-radius:8px;background:#EDE7F6;color:#4527A0;font-weight:700;margin:1px">POLY</span>`:''}
+        </td>
+        <td style="padding:9px 6px;text-align:center;vertical-align:top">
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+            <button onclick="editMaterial(${i})" style="width:28px;height:28px;border-radius:8px;border:1.5px solid #A5D6A7;background:#E8F5E9;color:#1B5E20;cursor:pointer;display:flex;align-items:center;justify-content:center">
+              <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button onclick="deleteMaterial(${i})" style="width:28px;height:28px;border-radius:8px;border:1.5px solid #FFCDD2;background:#FFEBEE;color:#C62828;cursor:pointer;display:flex;align-items:center;justify-content:center">
+              <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`;}).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function editMaterial(i){
+  const m=matMasterList[i];
+  const typeOpts=()=>{
+    const customs=JSON.parse(localStorage.getItem('inkki_custom_types')||'[]');
+    const base=['solvent','resin','pigment','additive'];
+    return [...base,...customs.filter(c=>!base.includes(c))];
+  };
+  const existing=document.getElementById('matAddOverlay');
+  if(existing) existing.remove();
+  const ov=document.createElement('div');
+  ov.id='matAddOverlay';
+  ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9999;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px';
+  const lbl=(text)=>`<div style="font-size:11px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">${text}</div>`;
+  const inp=(id,ph,val='')=>`<input id="${id}" type="text" placeholder="${ph}" value="${val}" autocomplete="off" style="width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:14px;background:#fafafa;-webkit-appearance:none">`;
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:400px;overflow:hidden;margin-top:10px">
+      <div style="background:#E8F5E9;padding:14px 16px;display:flex;align-items:center;gap:8px;border-bottom:.5px solid rgba(0,0,0,.08)">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#1B5E20;stroke-width:2.5;stroke-linecap:round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span style="font-size:15px;font-weight:700;color:#1B5E20">Edit material</span>
+      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:13px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>${lbl('Type')}
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="matType" style="flex:1;padding:11px 10px;border-radius:10px;border:1.5px solid #ddd;font-size:13px;background:#fafafa;-webkit-appearance:none;appearance:none">
+                ${typeOpts().map(t=>`<option value="${t}" ${m.type===t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+              </select>
+              <button onclick="addCustomType()" style="width:36px;height:40px;border-radius:10px;border:1.5px solid #A5D6A7;background:#E8F5E9;color:#1B5E20;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">+</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>${lbl('Company name')}${inp('matCompany','e.g. BASF',m.company||'')}</div>
+          <div>${lbl('Company code')}${inp('matCompCode','e.g. B-101',m.compCode||'')}</div>
+        </div>
+        <div>${lbl('Used in')}
+          <div style="display:flex;gap:12px;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;background:#fafafa">
+            <label style="display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer">
+              <input type="checkbox" id="usedPet" ${(m.used||'').includes('PET INK')?'checked':''} style="width:18px;height:18px;accent-color:#1B5E20;cursor:pointer"> PET INK
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:14px;cursor:pointer">
+              <input type="checkbox" id="usedPoly" ${(m.used||'').includes('POLY INK')?'checked':''} style="width:18px;height:18px;accent-color:#1B5E20;cursor:pointer"> POLY INK
+            </label>
+          </div>
+        </div>
+        <div>${lbl('Note')}
+          <textarea id="matNote" rows="2" autocomplete="off" style="width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:14px;background:#fafafa;resize:none;font-family:inherit">${m.note||''}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;padding:4px 16px 16px">
+        <button onclick="document.getElementById('matAddOverlay').remove()" style="flex:1;height:48px;border-radius:12px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+        <button onclick="updateMaterial(${i})" style="flex:1;height:48px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Update</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+function updateMaterial(i){
+  const type=document.getElementById('matType').value;
+  const company=document.getElementById('matCompany').value.trim();
+  const compCode=document.getElementById('matCompCode').value.trim().toUpperCase();
+  const usedArr=[];
+  if(document.getElementById('usedPet').checked) usedArr.push('PET INK');
+  if(document.getElementById('usedPoly').checked) usedArr.push('POLY INK');
+  const used=usedArr.join(', ');
+  const note=document.getElementById('matNote').value.trim();
+  matMasterList[i]={type,company,compCode,used,note};
+  try{localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));}catch(e){}
+  document.getElementById('matAddOverlay').remove();
+  buildMatMaster();
+  showToast('Material updated');
+  if(localStorage.getItem('gh_token')) syncToGitHub();
+}
+
+function addMaterial(){
+  const typeOpts=()=>{
+    const customs=JSON.parse(localStorage.getItem('inkki_custom_types')||'[]');
+    const base=['solvent','resin','pigment','additive'];
+    return [...base,...customs.filter(c=>!base.includes(c))];
+  };
+  const ov=document.createElement('div');
+  ov.id='matAddOverlay';
+  ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9999;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px';
+  const lbl=(text)=>`<div style="font-size:11px;font-weight:700;color:#555;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">${text}</div>`;
+  const inp=(id,ph)=>`<input id="${id}" type="text" placeholder="${ph}" autocomplete="off" style="width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:14px;background:#fafafa;-webkit-appearance:none">`;
+  ov.innerHTML=`
+    <div style="background:#fff;border-radius:20px;width:100%;max-width:400px;overflow:hidden;margin-top:10px">
+      <div style="background:#E8F5E9;padding:14px 16px;display:flex;align-items:center;gap:8px;border-bottom:.5px solid rgba(0,0,0,.08)">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#1B5E20;stroke-width:2.5;stroke-linecap:round"><path d="M12 5v14M5 12h14"/></svg>
+        <span style="font-size:15px;font-weight:700;color:#1B5E20">Add material</span>
+      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:13px">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>${lbl('Type')}
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="matType" style="flex:1;padding:11px 10px;border-radius:10px;border:1.5px solid #ddd;font-size:13px;background:#fafafa;-webkit-appearance:none;appearance:none">
+                ${typeOpts().map(t=>`<option value="${t}">${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+              </select>
+              <button onclick="addCustomType()" style="width:36px;height:40px;border-radius:10px;border:1.5px solid #A5D6A7;background:#E8F5E9;color:#1B5E20;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>${lbl('Company name')}${inp('matCompany','e.g. BASF')}</div>
+          <div>${lbl('Company code')}${inp('matCompCode','e.g. B-101')}</div>
+        </div>
+
+        <div>${lbl('Used in')}
+          <div style="display:flex;gap:12px;padding:10px 12px;border-radius:10px;border:1.5px solid #ddd;background:#fafafa">
+            <label style="display:flex;align-items:center;gap:7px;font-size:14px;color:#1a1a1a;cursor:pointer">
+              <input type="checkbox" id="usedPet" style="width:18px;height:18px;accent-color:#1B5E20;cursor:pointer"> PET INK
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:14px;color:#1a1a1a;cursor:pointer">
+              <input type="checkbox" id="usedPoly" style="width:18px;height:18px;accent-color:#1B5E20;cursor:pointer"> POLY INK
+            </label>
+          </div>
+        </div>
+
+        <div>${lbl('Note')}
+          <textarea id="matNote" placeholder="Any additional notes..." rows="2" autocomplete="off" style="width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid #ddd;font-size:14px;background:#fafafa;resize:none;font-family:inherit"></textarea>
+        </div>
+
+      </div>
+      <div style="display:flex;gap:10px;padding:4px 16px 16px">
+        <button onclick="document.getElementById('matAddOverlay').remove()" style="flex:1;height:48px;border-radius:12px;border:1.5px solid #ccc;background:#fff;color:#555;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+        <button onclick="saveMaterial()" style="flex:1;height:48px;border-radius:12px;border:none;background:#1B5E20;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>document.getElementById('matName').focus(),100);
+}
+
+function addCustomType(){
+  const t=prompt('Enter new type name:');
+  if(!t||!t.trim()) return;
+  const name=t.trim().toLowerCase();
+  const customs=JSON.parse(localStorage.getItem('inkki_custom_types')||'[]');
+  if(!customs.includes(name)){customs.push(name);localStorage.setItem('inkki_custom_types',JSON.stringify(customs));}
+  const sel=document.getElementById('matType');
+  if(sel){const opt=document.createElement('option');opt.value=name;opt.textContent=name.charAt(0).toUpperCase()+name.slice(1);sel.appendChild(opt);sel.value=name;}
+}
+
+function saveMaterial(){
+  const type=document.getElementById('matType').value;
+  const company=document.getElementById('matCompany').value.trim();
+  const compCode=document.getElementById('matCompCode').value.trim().toUpperCase();
+  const usedArr=[];
+  if(document.getElementById('usedPet').checked) usedArr.push('PET INK');
+  if(document.getElementById('usedPoly').checked) usedArr.push('POLY INK');
+  const used=usedArr.join(', ');
+  const note=document.getElementById('matNote').value.trim();
+  matMasterList.push({type,company,compCode,used,note});
+  try{localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));}catch(e){}
+  document.getElementById('matAddOverlay').remove();
+  buildMatMaster();
+  showToast('Material saved');
+  if(localStorage.getItem('gh_token')) syncToGitHub();
+}
+
+function deleteMaterial(i){
+  matMasterList.splice(i,1);
+  try{localStorage.setItem('inkki_matmaster',JSON.stringify(matMasterList));}catch(e){}
+  buildMatMaster();
+}
+
+function installApp(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(()=>{
+      deferredPrompt=null;
+      document.getElementById('installBar').style.display='none';
+    });
+  }
+}
+
+loadSaved();
+loadFromGitHub();
+renderSheet('vinyl');
+renderPolySheet('ketonic');
+</script>
+</body>
+</html>
